@@ -1,0 +1,334 @@
+from pathlib import Path
+import zipfile, textwrap, os
+
+root = Path("/mnt/data/big_boss_allen_alien")
+assets = root / "assets"
+assets.mkdir(parents=True, exist_ok=True)
+
+html = r'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>BIG BOSS ALLEN ALIEN</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="game">
+  <div class="scanlines"></div>
+
+  <section id="titleScreen" class="screen active">
+    <div class="warning">⚠ INCOMING TRANSMISSION ⚠</div>
+    <div class="logo">
+      <div>BIG BOSS</div>
+      <strong>ALLEN ALIEN</strong>
+    </div>
+    <div class="boss-placeholder title-boss">👽</div>
+    <p class="tagline">EARTH'S MOST UNFORTUNATE SPACE INVASION</p>
+    <button id="startBtn" class="bigBtn">▶ START MISSION</button>
+    <button id="loreBtn" class="smallBtn">📜 LORE</button>
+    <div class="tiny">A MAPEH PERFORMANCE TASK // CLASSIFIED</div>
+  </section>
+
+  <section id="loreScreen" class="screen">
+    <h1>📡 CLASSIFIED REPORT</h1>
+    <div class="panel lore">
+      <p><b>YEAR: 20XX</b></p>
+      <p>A mysterious signal has reached Earth from somewhere beyond the stars.</p>
+      <p>Scientists expected proof of intelligent extraterrestrial life.</p>
+      <p>They were right.</p>
+      <p>Unfortunately, the extraterrestrial is <b>ALLEN.</b></p>
+      <p>Allen Alien has arrived with an army of hostile aliens and one goal:</p>
+      <h2>CONQUER EARTH.</h2>
+      <p>Four brave astronauts have been deployed to stop the invasion.</p>
+      <p class="blink">MISSION OBJECTIVE: SHOOT EVERYTHING THAT LOOKS ALIEN.</p>
+    </div>
+    <button id="backFromLore" class="smallBtn">← BACK</button>
+  </section>
+
+  <section id="selectScreen" class="screen">
+    <h1>🚀 SELECT YOUR ASTRONAUT</h1>
+    <p>Choose one of the four members of the anti-Allen defense team.</p>
+    <div id="astronauts" class="characterGrid"></div>
+  </section>
+
+  <section id="gameScreen" class="screen">
+    <div class="hud">
+      <div>MISSION: <span id="stageText">ALIEN INVASION</span></div>
+      <div>SCORE: <span id="score">0</span></div>
+      <div>HP: <span id="hp">♥♥♥</span></div>
+    </div>
+    <div id="gameArea">
+      <div id="crosshair">+</div>
+      <div id="message" class="gameMessage"></div>
+    </div>
+    <div class="bottomHud">
+      <span>ALIENS REMAINING: <b id="remaining">0</b></span>
+      <span>CLICK / TAP TARGETS TO FIRE</span>
+    </div>
+  </section>
+
+  <section id="winScreen" class="screen">
+    <div class="winSymbol">★</div>
+    <h1>MISSION COMPLETE!</h1>
+    <p>THE ALLEN ALIEN INVASION HAS BEEN STOPPED.</p>
+    <div class="panel stats">
+      <div>FINAL SCORE: <b id="finalScore">0</b></div>
+      <div>ALIENS DEFEATED: <b id="finalKills">0</b></div>
+      <div>RANK: <b id="rank">S</b></div>
+    </div>
+    <p class="tiny">...for now.</p>
+    <button id="againBtn" class="bigBtn">↻ PLAY AGAIN</button>
+  </section>
+
+  <section id="loseScreen" class="screen">
+    <div class="danger">☠</div>
+    <h1>MISSION FAILED</h1>
+    <p>THE ALLEN ALIEN EMPIRE HAS WON.</p>
+    <p>Earth's last hope has been defeated.</p>
+    <button id="retryBtn" class="bigBtn">↻ RETRY MISSION</button>
+  </section>
+</div>
+<script src="game.js"></script>
+</body>
+</html>
+'''
+
+css = r'''@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#050713;color:#fff;font-family:"Press Start 2P",monospace}
+body{cursor:crosshair}
+button{font-family:inherit;cursor:pointer}
+#game{width:100vw;height:100vh;position:relative;background:
+radial-gradient(circle at 20% 20%,#17234d 0 1px,transparent 2px),
+radial-gradient(circle at 70% 40%,#fff 0 1px,transparent 2px),
+radial-gradient(circle at 45% 80%,#8ca0ff 0 1px,transparent 2px),
+linear-gradient(#07091a,#02030a);
+background-size:170px 130px,230px 170px,300px 220px,auto}
+#game:after{content:"";position:absolute;inset:0;pointer-events:none;background-image:radial-gradient(#fff 0.6px,transparent .8px);background-size:95px 83px;opacity:.28}
+.scanlines{position:absolute;inset:0;z-index:50;pointer-events:none;background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(255,255,255,.025) 4px);mix-blend-mode:screen}
+.screen{position:absolute;inset:0;z-index:2;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:25px}
+.screen.active{display:flex}
+.warning{color:#ff3f5f;font-size:12px;margin-bottom:20px;animation:blink 1s infinite}
+.logo{font-size:clamp(25px,6vw,64px);line-height:1.25;text-shadow:4px 4px 0 #101020}
+.logo strong{color:#70ffdb;text-shadow:4px 4px 0 #164e49}
+.title-boss{font-size:100px;filter:drop-shadow(0 0 20px #72ffe0);animation:float 2s ease-in-out infinite}
+.tagline{font-size:10px;color:#aaa;max-width:600px}
+.bigBtn,.smallBtn{border:3px solid #70ffdb;background:#081c25;color:#70ffdb;padding:16px 22px;margin:8px;box-shadow:5px 5px 0 #17483f}
+.bigBtn:hover,.smallBtn:hover{background:#70ffdb;color:#061013;transform:translate(2px,2px)}
+.bigBtn{font-size:14px}
+.smallBtn{font-size:10px}
+.tiny{font-size:8px;color:#6d738c;margin-top:18px}
+h1{font-size:clamp(18px,4vw,35px);color:#70ffdb;text-shadow:3px 3px #164e49}
+h2{color:#ff4666;font-size:20px}
+.panel{border:2px solid #70ffdb;background:rgba(2,10,20,.88);padding:22px;max-width:680px;box-shadow:0 0 30px rgba(112,255,219,.15)}
+.lore{font-family:monospace;font-size:16px;line-height:1.65;text-align:left}
+.blink{color:#ff4666;font-family:"Press Start 2P",monospace;font-size:10px}
+.characterGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:15px;width:min(900px,95vw)}
+.character{border:2px solid #46506e;background:#090d1d;padding:12px;color:#fff;transition:.15s}
+.character:hover{border-color:#70ffdb;transform:translateY(-5px);background:#102231}
+.charFace{height:130px;display:flex;align-items:center;justify-content:center;font-size:70px;background:linear-gradient(135deg,#151c3c,#050812);margin-bottom:10px}
+.character b{font-size:10px}.character span{display:block;font-size:7px;color:#8f96ad;margin-top:8px;line-height:1.5}
+#gameScreen{padding:0}
+.hud,.bottomHud{width:100%;padding:13px 18px;background:rgba(2,5,15,.9);border-bottom:2px solid #70ffdb;display:flex;justify-content:space-between;gap:15px;font-size:10px;z-index:4}
+.bottomHud{border-top:2px solid #70ffdb;border-bottom:0;font-size:8px}
+#gameArea{position:relative;flex:1;width:100%;overflow:hidden}
+.target{position:absolute;display:flex;align-items:center;justify-content:center;width:76px;height:76px;border-radius:50%;font-size:48px;user-select:none;filter:drop-shadow(0 0 10px #70ffdb);animation:targetPulse .7s infinite alternate}
+.target.boss{width:180px;height:180px;font-size:120px;border-radius:0;filter:drop-shadow(0 0 25px #ff4666);animation:bossFloat 1.2s infinite alternate}
+.ufo{font-size:95px;filter:drop-shadow(0 0 20px #b48cff)}
+.hit{position:absolute;color:#ff4666;font-size:22px;font-weight:bold;pointer-events:none;animation:hit .4s forwards}
+.gameMessage{position:absolute;top:25%;left:50%;transform:translateX(-50%);z-index:3;color:#ff4666;font-size:13px;line-height:1.7;pointer-events:none;text-shadow:0 0 10px #000}
+#crosshair{position:fixed;pointer-events:none;color:#70ffdb;font-size:28px;z-index:20;display:none}
+.stats{line-height:2;font-size:12px;margin:20px}
+.winSymbol{font-size:80px;color:#ffe56b;text-shadow:0 0 30px #ffe56b}
+.danger{font-size:100px;color:#ff4666}
+@keyframes blink{50%{opacity:.25}}
+@keyframes float{50%{transform:translateY(-15px) rotate(3deg)}}
+@keyframes targetPulse{to{transform:scale(1.12) rotate(5deg)}}
+@keyframes bossFloat{to{transform:translateY(-10px) scale(1.03)}}
+@keyframes hit{to{transform:translateY(-35px);opacity:0}}
+@media(max-width:700px){.characterGrid{grid-template-columns:repeat(2,1fr)}.charFace{height:90px}.hud,.bottomHud{font-size:7px;padding:9px}.lore{font-size:13px}}
+'''
+
+js = r'''const $=id=>document.getElementById(id);
+const screens=document.querySelectorAll(".screen");
+const show=id=>{screens.forEach(s=>s.classList.remove("active"));$(id).classList.add("active")};
+
+const astronauts=[
+ {name:"ASTRONAUT 01",face:"👩‍🚀",stat:"ACCURACY // UNKNOWN"},
+ {name:"ASTRONAUT 02",face:"👩‍🚀",stat:"COURAGE // QUESTIONABLE"},
+ {name:"ASTRONAUT 03",face:"👩‍🚀",stat:"SPEED // VERY FAST"},
+ {name:"ASTRONAUT 04",face:"👩‍🚀",stat:"LUCK // MAXIMUM"}
+];
+
+let selected=0,score=0,kills=0,hp=3,remaining=0,stage=1,gameTimer=null,bossHp=0;
+
+$("astronauts").innerHTML=astronauts.map((a,i)=>`
+ <button class="character" data-i="${i}">
+   <div class="charFace">${a.face}</div>
+   <b>${a.name}</b><span>${a.stat}</span>
+   <span>CLICK TO DEPLOY</span>
+ </button>`).join("");
+
+$("startBtn").onclick=()=>show("selectScreen");
+$("loreBtn").onclick=()=>show("loreScreen");
+$("backFromLore").onclick=()=>show("titleScreen");
+$("againBtn").onclick=()=>show("selectScreen");
+$("retryBtn").onclick=()=>show("selectScreen");
+
+document.querySelectorAll(".character").forEach(c=>c.onclick=()=>{
+ selected=+c.dataset.i; startGame();
+});
+
+const area=$("gameArea");
+area.addEventListener("click",e=>{
+ if(e.target.classList.contains("target")||e.target.classList.contains("boss")){
+   shoot(e.target,e.clientX,e.clientY);
+ } else if(stage===1 && e.target===area){
+   damagePlayer();
+ }
+});
+document.addEventListener("mousemove",e=>{
+ $("crosshair").style.left=(e.clientX-8)+"px";
+ $("crosshair").style.top=(e.clientY-14)+"px";
+});
+
+function startGame(){
+ score=0;kills=0;hp=3;stage=1;
+ $("score").textContent=0;$("hp").textContent="♥♥♥";
+ show("gameScreen");
+ $("crosshair").style.display="block";
+ startInvasion();
+}
+function clearArea(){area.querySelectorAll(".target,.boss,.ufo,.hit").forEach(x=>x.remove())}
+function startInvasion(){
+ clearArea(); $("stageText").textContent="ALIEN INVASION";
+ remaining=10; updateHUD();
+ $("message").textContent="WAVE 1 // DESTROY THE INVADERS";
+ for(let i=0;i<5;i++) spawnAlien();
+}
+function spawnAlien(){
+ if(remaining<=0)return;
+ const t=document.createElement("div");
+ t.className="target";t.textContent="👾";
+ t.style.left=(5+Math.random()*88)+"%";
+ t.style.top=(5+Math.random()*80)+"%";
+ area.appendChild(t);
+}
+function shoot(target,x,y){
+ const rect=target.getBoundingClientRect();
+ const hit=document.createElement("div");hit.className="hit";hit.textContent="+100";
+ hit.style.left=(x-20)+"px";hit.style.top=(y-20)+"px";document.body.appendChild(hit);
+ setTimeout(()=>hit.remove(),450);
+ if(target.classList.contains("boss")){
+   bossHp--;score+=250;
+   if(bossHp<=0) win();
+   else updateBoss(target);
+   return;
+ }
+ target.remove();score+=100;kills++;remaining--;updateHUD();
+ if(remaining<=0) setTimeout(startBoss,800); else setTimeout(spawnAlien,180);
+}
+function updateBoss(target){
+ $("message").textContent="DIRECT HIT // ALLEN IS LOSING IT";
+ target.style.transform="scale(.9)";
+ setTimeout(()=>target.style.transform="",100);
+}
+function damagePlayer(){
+ if(stage!==1)return;
+ hp--; $("hp").textContent="♥".repeat(hp)+"♡".repeat(3-hp);
+ if(hp<=0)lose();
+}
+function updateHUD(){$("score").textContent=score;$("remaining").textContent=remaining}
+function startBoss(){
+ stage=2;clearArea();$("stageText").textContent="ALLEN ALIEN // FINAL BOSS";
+ $("message").textContent="⚠ ALLEN ALIEN HAS ARRIVED ⚠";
+ setTimeout(()=>{
+   $("message").textContent="";
+   const boss=document.createElement("div");boss.className="boss target";boss.textContent="👽";
+   boss.style.left="calc(50% - 90px)";boss.style.top="calc(50% - 90px)";
+   area.appendChild(boss);bossHp=15;
+   let moves=0;
+   gameTimer=setInterval(()=>{
+     if(!document.body.contains(boss)){clearInterval(gameTimer);return}
+     moves++;
+     boss.style.left=(8+Math.random()*75)+"%";
+     boss.style.top=(8+Math.random()*72)+"%";
+     if(moves%3===0) spawnMini();
+   },900);
+ },1000);
+}
+function spawnMini(){
+ const t=document.createElement("div");t.className="target";t.textContent="👾";
+ t.style.left=(Math.random()*90)+"%";t.style.top=(Math.random()*75)+"%";
+ area.appendChild(t);
+ setTimeout(()=>{if(document.body.contains(t))t.remove()},2200);
+}
+function win(){
+ clearInterval(gameTimer);clearArea();$("crosshair").style.display="none";
+ $("finalScore").textContent=score;
+ $("finalKills").textContent=kills;
+ $("rank").textContent=score>=3000?"S":score>=2000?"A":score>=1000?"B":"C";
+ show("winScreen");
+}
+function lose(){
+ clearInterval(gameTimer);clearArea();$("crosshair").style.display="none";show("loseScreen");
+}
+'''
+readme = r'''# BIG BOSS ALLEN ALIEN 👽
+
+A tiny browser arcade game for a MAPEH performance task.
+
+## How to customize
+
+Put your images inside `assets/` and change the placeholder emoji in `game.js` / `index.html`.
+
+Suggested files:
+- `allen.png`
+- `alien.png`
+- `ufo.png`
+- `astronaut1.png`
+- `astronaut2.png`
+- `astronaut3.png`
+- `astronaut4.png`
+
+## Run locally
+Just open `index.html` in a browser.
+
+## Put it on GitHub Pages
+1. Create a new GitHub repository.
+2. Upload `index.html`, `style.css`, `game.js`, and the `assets` folder.
+3. Go to **Settings → Pages**.
+4. Choose **Deploy from a branch**.
+5. Select your main branch and `/ (root)`.
+6. Save.
+
+GitHub will give you a public game URL.
+'''
+
+for path,data in [
+    (root/"index.html",html),(root/"style.css",css),(root/"game.js",js),(root/"README.md",readme)
+]:
+    path.write_text(data,encoding="utf-8")
+
+# Placeholder asset guide so the folder is visible/understandable in GitHub.
+(root/"assets"/"PUT-YOUR-IMAGES-HERE.txt").write_text(
+"""Replace the emoji placeholders with your own images later.
+Suggested names:
+allen.png
+alien.png
+ufo.png
+astronaut1.png
+astronaut2.png
+astronaut3.png
+astronaut4.png
+""",encoding="utf-8")
+
+zip_path=Path("/mnt/data/BIG_BOSS_ALLEN_ALIEN_game.zip")
+with zipfile.ZipFile(zip_path,"w",zipfile.ZIP_DEFLATED) as z:
+    for p in root.rglob("*"):
+        z.write(p,p.relative_to(root.parent))
+
+print(f"Created game folder: {root}")
+print(f"Created ZIP: {zip_path}")
